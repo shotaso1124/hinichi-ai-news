@@ -45,6 +45,28 @@ def _load_data(force_refresh: bool) -> tuple[dict[str, list[dict[str, Any]]], li
     return data, errors
 
 
+def _check_admin(token: str, expected: str) -> bool:
+    """Return True only when both values are non-empty and equal.
+
+    Used to gate the manual refresh button to the代表 (admin).
+    Token comes from URL query param ``?admin=...`` and is compared
+    against ``st.secrets["admin_token"]`` (set in Streamlit Cloud Secrets).
+    """
+    return bool(token) and bool(expected) and token == expected
+
+
+def _get_admin_token_from_secrets() -> str:
+    """Safely read ``admin_token`` from Streamlit Secrets.
+
+    Returns empty string if no secrets file is present (e.g., in tests),
+    so the function never raises.
+    """
+    try:
+        return str(st.secrets.get("admin_token", ""))
+    except Exception:  # noqa: BLE001 — secrets.toml may be absent in dev/CI
+        return ""
+
+
 def _render_tab(
     title: str,
     articles: list[dict[str, Any]],
@@ -69,18 +91,32 @@ def main() -> None:
     if "last_refresh" not in st.session_state:
         st.session_state["last_refresh"] = datetime.now()
 
+    # 管理者判定: URLパラメータ ?admin=token と Streamlit Secrets の admin_token を照合
+    # Secrets の設定方法: https://share.streamlit.io/ → アプリの Settings → Secrets
+    #   admin_token = "32文字のランダム英数字"
+    # 一般ユーザー（トークンなし）には更新ボタンを出さず、読み取り専用モードにする。
+    _token = st.query_params.get("admin", "")
+    _is_admin = _check_admin(_token, _get_admin_token_from_secrets())
+
     with st.sidebar:
         st.header("操作")
         st.write(
             f"最終更新: {st.session_state['last_refresh'].strftime('%Y-%m-%d %H:%M:%S')}"
         )
-        force_refresh = st.button("更新", use_container_width=True)
-        st.caption("キャッシュ有効期限: 30分")
+        if _is_admin:
+            force_refresh = st.button("更新", use_container_width=True)
+            st.caption("キャッシュ有効期限: 30分")
+        else:
+            force_refresh = False
+            st.caption("読み取り専用モード(キャッシュ有効期限: 30分)")
 
     if force_refresh:
         st.session_state["last_refresh"] = datetime.now()
-
-    data, errors = _load_data(force_refresh=force_refresh)
+        with st.spinner("最新情報を取得中..."):
+            data, errors = _load_data(force_refresh=True)
+        st.toast("更新完了", icon="✅")
+    else:
+        data, errors = _load_data(force_refresh=False)
 
     for err in errors:
         st.error(err)
