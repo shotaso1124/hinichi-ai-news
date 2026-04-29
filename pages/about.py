@@ -64,7 +64,7 @@ with col_yes:
 
 - 訪問者数・滞在時間
   （Google Analytics 経由・個人特定なし）
-- 記事タイトル(英語)を Anthropic Claude API に送信
+- 記事タイトル(英語)を OpenAI API (GPT-4o-mini) に送信
   （翻訳のみ・個人情報は含みません・APIキー未設定時は送信されません）
 """
     )
@@ -153,7 +153,7 @@ with st.expander("Q. データはどこに保存されますか?"):
 
 with st.expander("Q. タイトルはどうやって日本語化されていますか?"):
     st.markdown(
-        "**A.** Anthropic Claude Haiku で英語タイトルを日本語訳しています。"
+        "**A.** OpenAI GPT-4o-mini で英語タイトルを日本語訳しています。"
         "送信するのは記事タイトル（公開情報）のみで、あなたの個人情報は一切送りません。"
         "API キーが未設定の場合は翻訳せず、原題そのまま表示されます。"
     )
@@ -184,7 +184,7 @@ st.code(
 [HN Firebase API]  ─┐
 [HF Daily Papers]  ─┼─→  fetchers/  ─→  store/cache.py (SQLite TTL 30分)  ─→  app.py (UI)
 [hnrss.org RSS]    ─┘                                                       ↓
-                                ↓                              translator.py (Claude Haiku)
+                                ↓                              translator.py (GPT-4o-mini)
                          AIキーワードフィルタ (27語)               ↓
                          ui/filters.py                       SQLite 永続キャッシュ
                                                               (translations テーブル)
@@ -195,7 +195,7 @@ st.code(
 st.caption(
     "AIキーワードフィルタは `ui/filters.py` の `AI_KEYWORDS` (27 語) で記事を絞り込む。"
     " HN Stories と HN RSS には適用、HF Papers は全件表示（既にAI領域のため）。"
-    " タイトル翻訳は `translator.py` で Claude Haiku に英語タイトルのみ送信。"
+    " タイトル翻訳は `translator.py` で GPT-4o-mini に英語タイトルのみ送信。"
     "API キー未設定時は翻訳せず原題のまま表示。"
 )
 

@@ -41,10 +41,11 @@ def tmp_translation_db(monkeypatch):
         sys.modules.pop("translator", None)
 
 
-def _fake_anthropic_response(text: str):
-    """Build a minimal stand-in for ``client.messages.create`` return value."""
-    block = SimpleNamespace(text=text)
-    return SimpleNamespace(content=[block])
+def _fake_openai_response(text: str):
+    """Build a minimal stand-in for ``client.chat.completions.create`` return value."""
+    message = SimpleNamespace(content=text)
+    choice = SimpleNamespace(message=message)
+    return SimpleNamespace(choices=[choice])
 
 
 # ---------------------------------------------------------------------------
@@ -55,7 +56,7 @@ def _fake_anthropic_response(text: str):
 def test_translate_title_returns_original_when_api_key_missing(
     tmp_translation_db, monkeypatch
 ):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     import translator
 
     assert translator.translate_title("Hello World") == "Hello World"
@@ -64,27 +65,27 @@ def test_translate_title_returns_original_when_api_key_missing(
 def test_translate_title_returns_original_for_placeholder_key(
     tmp_translation_db, monkeypatch
 ):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-XXXXXXXXXXXXXXXXXXXXXX")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-XXXXXXXXXXXXXXXXXXXXXX")
     import translator
 
     # Should NOT attempt to instantiate the SDK with a placeholder key.
-    with patch("anthropic.Anthropic") as mock_anthropic:
+    with patch("openai.OpenAI") as mock_openai:
         result = translator.translate_title("Hello World")
 
     assert result == "Hello World"
-    mock_anthropic.assert_not_called()
+    mock_openai.assert_not_called()
 
 
 def test_translate_title_returns_original_on_api_exception(
     tmp_translation_db, monkeypatch
 ):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-real-looking-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-real-looking-key")
     import translator
 
     fake_client = MagicMock()
-    fake_client.messages.create.side_effect = RuntimeError("boom")
+    fake_client.chat.completions.create.side_effect = RuntimeError("boom")
 
-    with patch("anthropic.Anthropic", return_value=fake_client):
+    with patch("openai.OpenAI", return_value=fake_client):
         result = translator.translate_title("Hello World")
 
     assert result == "Hello World"
@@ -98,33 +99,33 @@ def test_translate_title_returns_original_on_api_exception(
 def test_translate_title_returns_japanese_on_success(
     tmp_translation_db, monkeypatch
 ):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-real-looking-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-real-looking-key")
     import translator
 
     fake_client = MagicMock()
-    fake_client.messages.create.return_value = _fake_anthropic_response(
+    fake_client.chat.completions.create.return_value = _fake_openai_response(
         "こんにちは世界"
     )
 
-    with patch("anthropic.Anthropic", return_value=fake_client):
+    with patch("openai.OpenAI", return_value=fake_client):
         result = translator.translate_title("Hello World")
 
     assert result == "こんにちは世界"
-    fake_client.messages.create.assert_called_once()
+    fake_client.chat.completions.create.assert_called_once()
 
 
 def test_translate_title_uses_cache_on_second_call(
     tmp_translation_db, monkeypatch
 ):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-real-looking-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-real-looking-key")
     import translator
 
     fake_client = MagicMock()
-    fake_client.messages.create.return_value = _fake_anthropic_response(
+    fake_client.chat.completions.create.return_value = _fake_openai_response(
         "AI最新動向"
     )
 
-    with patch("anthropic.Anthropic", return_value=fake_client) as mock_factory:
+    with patch("openai.OpenAI", return_value=fake_client) as mock_factory:
         first = translator.translate_title("AI Latest Trends")
         second = translator.translate_title("AI Latest Trends")
 
@@ -132,19 +133,19 @@ def test_translate_title_uses_cache_on_second_call(
     assert second == "AI最新動向"
     # キャッシュヒット: 2 回目はクライアント生成も create 呼び出しもされない。
     assert mock_factory.call_count == 1
-    assert fake_client.messages.create.call_count == 1
+    assert fake_client.chat.completions.create.call_count == 1
 
 
 def test_translate_title_persists_to_sqlite(tmp_translation_db, monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-real-looking-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-real-looking-key")
     import translator
 
     fake_client = MagicMock()
-    fake_client.messages.create.return_value = _fake_anthropic_response(
+    fake_client.chat.completions.create.return_value = _fake_openai_response(
         "翻訳結果"
     )
 
-    with patch("anthropic.Anthropic", return_value=fake_client):
+    with patch("openai.OpenAI", return_value=fake_client):
         translator.translate_title("Original Title")
 
     # 直接 helper でキャッシュを覗く。
@@ -158,28 +159,28 @@ def test_translate_title_persists_to_sqlite(tmp_translation_db, monkeypatch):
 
 
 def test_translate_title_handles_empty_string(tmp_translation_db, monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-real-looking-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-real-looking-key")
     import translator
 
-    with patch("anthropic.Anthropic") as mock_anthropic:
+    with patch("openai.OpenAI") as mock_openai:
         result = translator.translate_title("")
 
     assert result == ""
-    mock_anthropic.assert_not_called()
+    mock_openai.assert_not_called()
 
 
 def test_translate_title_falls_back_when_response_too_long(
     tmp_translation_db, monkeypatch
 ):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-real-looking-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-real-looking-key")
     import translator
 
     huge = "あ" * 250  # > 200 chars: treated as anomaly
 
     fake_client = MagicMock()
-    fake_client.messages.create.return_value = _fake_anthropic_response(huge)
+    fake_client.chat.completions.create.return_value = _fake_openai_response(huge)
 
-    with patch("anthropic.Anthropic", return_value=fake_client):
+    with patch("openai.OpenAI", return_value=fake_client):
         result = translator.translate_title("Some Title")
 
     assert result == "Some Title"
@@ -190,15 +191,15 @@ def test_translate_title_falls_back_when_response_too_long(
 def test_translate_title_falls_back_when_response_equals_original(
     tmp_translation_db, monkeypatch
 ):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-real-looking-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-real-looking-key")
     import translator
 
     fake_client = MagicMock()
-    fake_client.messages.create.return_value = _fake_anthropic_response(
+    fake_client.chat.completions.create.return_value = _fake_openai_response(
         "Same Title"
     )
 
-    with patch("anthropic.Anthropic", return_value=fake_client):
+    with patch("openai.OpenAI", return_value=fake_client):
         result = translator.translate_title("Same Title")
 
     assert result == "Same Title"
@@ -208,14 +209,14 @@ def test_translate_title_falls_back_when_response_equals_original(
 def test_get_cached_translation_returns_none_for_missing(
     tmp_translation_db, monkeypatch
 ):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     import translator
 
     assert translator.get_cached_translation("never seen") is None
 
 
 def test_cache_translation_then_get_round_trip(tmp_translation_db, monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     import translator
 
     translator.cache_translation("Foo", "フー")
