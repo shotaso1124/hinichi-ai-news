@@ -103,10 +103,14 @@ def main() -> None:
         if _is_admin:
             force_refresh = st.button("更新", use_container_width=True)
             if force_refresh:
+                # 真因対策: spinner中サイドバー描画保留問題を回避するため
+                # last_refreshを更新してから即rerunし、サイドバーを再描画させる。
+                # fetch本体はrerun後にdo_fetchフラグを検出して実行する。
                 st.session_state["last_refresh"] = datetime.now()
+                st.session_state["do_fetch"] = True
+                st.rerun()
             st.caption("キャッシュ有効期限: 30分")
         else:
-            force_refresh = False
             st.caption("読み取り専用モード(キャッシュ有効期限: 30分)")
 
         # 「最終更新」表示はボタン判定の後に置く（順序が重要）
@@ -114,7 +118,9 @@ def main() -> None:
         if last_refresh:
             st.caption(f"最終更新: {last_refresh.strftime('%Y-%m-%d %H:%M:%S')}")
 
-    if force_refresh:
+    # do_fetchフラグはpopで消費（次回rerunでは消えてキャッシュ利用に戻る）
+    do_fetch = st.session_state.pop("do_fetch", False)
+    if do_fetch:
         with st.spinner("最新情報を取得中..."):
             data, errors = _load_data(force_refresh=True)
         st.toast("更新完了", icon="✅")
