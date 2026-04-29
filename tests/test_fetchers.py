@@ -473,3 +473,85 @@ def test_filter_articles_keeps_only_ai():
 
     assert len(result) == 2
     assert all("title" in a for a in result)
+
+
+# ---------------------------------------------------------------------------
+# Integration: fetchers + ui/render with no-op translator
+# (タイトル翻訳経由でも既存パイプラインが壊れないことの確認)
+# ---------------------------------------------------------------------------
+
+
+def test_fetch_all_pipeline_works_with_noop_translator(tmp_cache_db, monkeypatch):
+    """``translate_title`` を no-op にしても ``fetch_all`` の出力が従来通りであること。"""
+    import fetchers
+
+    # 翻訳を no-op (原題そのまま返す) に差し替える。fetchers は翻訳を呼ばないが、
+    # 「翻訳統合後も既存フェッチパスが壊れない」ことを明示的に確かめる。
+    import translator
+
+    monkeypatch.setattr(translator, "translate_title", lambda title: title)
+
+    monkeypatch.setattr(
+        fetchers,
+        "fetch_hn_top_stories",
+        lambda **_: [
+            {"id": 1, "title": "AI breakthrough", "url": "https://a", "score": 99, "source": "hn"}
+        ],
+    )
+    monkeypatch.setattr(
+        fetchers,
+        "fetch_hf_papers",
+        lambda **_: [
+            {"title": "Paper", "url": "https://huggingface.co/papers/x", "score": 5, "source": "hf_papers"}
+        ],
+    )
+    monkeypatch.setattr(
+        fetchers,
+        "fetch_hn_rss",
+        lambda **_: [{"title": "RSS Item", "url": "https://b", "source": "rss"}],
+    )
+
+    result = fetchers.fetch_all()
+
+    assert set(result.keys()) == {"hn", "hf_papers", "rss"}
+    assert result["hn"][0]["title"] == "AI breakthrough"
+    assert result["hf_papers"][0]["title"] == "Paper"
+    assert result["rss"][0]["title"] == "RSS Item"
+
+
+def test_render_card_invokes_translator_with_title(tmp_cache_db, monkeypatch):
+    """render_article_card が translate_title を経由してタイトルを取得すること。"""
+    captured = {}
+
+    def fake_translate(title):
+        captured["called_with"] = title
+        # サニタイザは [, ], (, ) を除去するため、ここでは含めない。
+        return f"日本語訳: {title}"
+
+    # render は ``from translator import translate_title`` で関数を取り込むため、
+    # ``ui.render`` モジュール側のシンボルを差し替える必要がある。
+    from ui import render as render_module
+
+    monkeypatch.setattr(render_module, "translate_title", fake_translate)
+
+    # Streamlit 側の副作用 (markdown/caption/write/divider) はすべてモック化。
+    fake_st = MagicMock()
+    monkeypatch.setattr(render_module, "st", fake_st)
+
+    article = {
+        "title": "Hello AI",
+        "url": "https://example.com",
+        "score": 42,
+        "source": "hn",
+        "by": "alice",
+    }
+
+    render_module.render_article_card(article)
+
+    assert captured["called_with"] == "Hello AI"
+    # 翻訳結果が markdown 出力に含まれていること。
+    md_calls = [c.args[0] for c in fake_st.markdown.call_args_list]
+    assert any("日本語訳: Hello AI" in s for s in md_calls)
+    # 原題併記の caption が呼ばれていること(翻訳が原題と異なるため)。
+    caption_calls = [c.args[0] for c in fake_st.caption.call_args_list]
+    assert any("原題: Hello AI" in s for s in caption_calls)

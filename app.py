@@ -64,18 +64,18 @@ def _render_tab(
 
 def main() -> None:
     st.title("ひにち AI News")
-    st.caption("Personal AI news feed — Hacker News + HuggingFace Daily Papers + HN RSS")
+    st.caption("AIニュースフィード — Hacker News + HuggingFace論文 + HN RSS")
 
     if "last_refresh" not in st.session_state:
         st.session_state["last_refresh"] = datetime.now()
 
     with st.sidebar:
-        st.header("Controls")
+        st.header("操作")
         st.write(
-            f"Last update: {st.session_state['last_refresh'].strftime('%Y-%m-%d %H:%M:%S')}"
+            f"最終更新: {st.session_state['last_refresh'].strftime('%Y-%m-%d %H:%M:%S')}"
         )
-        force_refresh = st.button("Refresh", use_container_width=True)
-        st.caption("Cache TTL: 30 minutes")
+        force_refresh = st.button("更新", use_container_width=True)
+        st.caption("キャッシュ有効期限: 30分")
 
     if force_refresh:
         st.session_state["last_refresh"] = datetime.now()
@@ -85,30 +85,30 @@ def main() -> None:
     for err in errors:
         st.error(err)
 
-    tab_hn, tab_papers, tab_rss = st.tabs(["HN Stories", "HF Papers", "HN RSS"])
+    tab_hn, tab_papers, tab_rss = st.tabs(["Hacker News", "HuggingFace論文", "HN RSS"])
 
     with tab_hn:
         _render_tab(
-            "Hacker News (AI-filtered, score >= 50)",
+            "Hacker News(AI関連・スコア50以上)",
             data.get("hn", []),
             apply_filter=True,
-            empty_message="No AI-related stories on HN right now.",
+            empty_message="現在、HNにAI関連の記事はありません。",
         )
 
     with tab_papers:
         _render_tab(
-            "HuggingFace Daily Papers",
+            "HuggingFace 日次論文",
             data.get("hf_papers", []),
             apply_filter=False,
-            empty_message="No papers available for today yet.",
+            empty_message="本日の論文はまだありません。",
         )
 
     with tab_rss:
         _render_tab(
-            "HN RSS (AI keyword)",
+            "HN RSS(AIキーワード)",
             data.get("rss", []),
             apply_filter=True,
-            empty_message="No AI-related items in the RSS feed.",
+            empty_message="RSSフィードにAI関連の記事はありません。",
         )
 
 
