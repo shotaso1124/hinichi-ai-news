@@ -91,14 +91,6 @@ def main() -> None:
     if "last_refresh" not in st.session_state:
         st.session_state["last_refresh"] = datetime.now()
 
-    # ボタン押下を次回rerunで反映するためのフラグ処理
-    # サイドバーは上から順に描画されるため、前回rerunでセットした
-    # _pending_refresh をここで last_refresh に反映してから描画する。
-    if st.session_state.get("_pending_refresh", False):
-        st.session_state["last_refresh"] = datetime.now()
-        st.session_state["_pending_refresh"] = False
-        st.session_state["_just_refreshed"] = True
-
     # 管理者判定: URLパラメータ ?admin=token と Streamlit Secrets の admin_token を照合
     # Secrets の設定方法: https://share.streamlit.io/ → アプリの Settings → Secrets
     #   admin_token = "32文字のランダム英数字"
@@ -108,23 +100,21 @@ def main() -> None:
 
     with st.sidebar:
         st.header("操作")
-        st.write(
-            f"最終更新: {st.session_state['last_refresh'].strftime('%Y-%m-%d %H:%M:%S')}"
-        )
         if _is_admin:
             force_refresh = st.button("更新", use_container_width=True)
+            if force_refresh:
+                st.session_state["last_refresh"] = datetime.now()
             st.caption("キャッシュ有効期限: 30分")
         else:
             force_refresh = False
             st.caption("読み取り専用モード(キャッシュ有効期限: 30分)")
 
-    if force_refresh:
-        # ボタン押下時はフラグだけ立てて即rerunする。
-        # 次回rerunの先頭で last_refresh が更新されてからサイドバーが描画される。
-        st.session_state["_pending_refresh"] = True
-        st.rerun()
+        # 「最終更新」表示はボタン判定の後に置く（順序が重要）
+        last_refresh = st.session_state.get("last_refresh")
+        if last_refresh:
+            st.caption(f"最終更新: {last_refresh.strftime('%Y-%m-%d %H:%M:%S')}")
 
-    if st.session_state.pop("_just_refreshed", False):
+    if force_refresh:
         with st.spinner("最新情報を取得中..."):
             data, errors = _load_data(force_refresh=True)
         st.toast("更新完了", icon="✅")
