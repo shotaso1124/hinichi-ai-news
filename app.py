@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -16,6 +17,7 @@ from ui.render import render_article_card
 
 load_dotenv()
 GA4_ID = os.getenv("GA4_MEASUREMENT_ID", "")
+JST = ZoneInfo("Asia/Tokyo")
 
 
 st.set_page_config(page_title="ひにち AI News", layout="wide")
@@ -89,7 +91,7 @@ def main() -> None:
     st.caption("AIニュースフィード — Hacker News + HuggingFace論文 + HN RSS")
 
     if "last_refresh" not in st.session_state:
-        st.session_state["last_refresh"] = datetime.now()
+        st.session_state["last_refresh"] = datetime.now(JST)
 
     # 管理者判定: URLパラメータ ?admin=token と Streamlit Secrets の admin_token を照合
     # Secrets の設定方法: https://share.streamlit.io/ → アプリの Settings → Secrets
@@ -106,7 +108,7 @@ def main() -> None:
                 # 真因対策: spinner中サイドバー描画保留問題を回避するため
                 # last_refreshを更新してから即rerunし、サイドバーを再描画させる。
                 # fetch本体はrerun後にdo_fetchフラグを検出して実行する。
-                st.session_state["last_refresh"] = datetime.now()
+                st.session_state["last_refresh"] = datetime.now(JST)
                 st.session_state["do_fetch"] = True
                 st.rerun()
             st.caption("キャッシュ有効期限: 30分")
